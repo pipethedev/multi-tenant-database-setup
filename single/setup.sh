@@ -42,7 +42,6 @@ rm ssl/postgres.csr ssl/postgres-ext.cnf
 
 echo "Creating HAProxy configuration..."
 
-# HAProxy config with SNI passthrough
 cat > haproxy.cfg <<'EOF'
 global
     daemon
@@ -65,14 +64,15 @@ backend tenant_b_postgres
     mode tcp
     server postgres-b postgres-tenant-b:5432 check
 
-frontend postgres_frontend
+frontend tenant_a_frontend
     bind *:5432
     mode tcp
-    tcp-request inspect-delay 5s
-    tcp-request content accept if { req_ssl_hello_type 1 }
-    use_backend tenant_a_postgres if { req_ssl_sni -i tenant-a.postgres.brimble.app }
-    use_backend tenant_b_postgres if { req_ssl_sni -i tenant-b.postgres.brimble.app }
     default_backend tenant_a_postgres
+
+frontend tenant_b_frontend
+    bind *:5433
+    mode tcp
+    default_backend tenant_b_postgres
 
 frontend stats
     bind *:8404
@@ -80,7 +80,6 @@ frontend stats
     stats enable
     stats uri /stats
     stats refresh 10s
-    stats show-desc "PostgreSQL SNI Proxy"
 EOF
 
 echo "Setting up DNS entries..."

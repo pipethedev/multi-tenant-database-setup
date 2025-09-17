@@ -75,8 +75,6 @@ frontend postgres_sni_frontend
 
     use_backend tenant_a_postgres if is_tenant_a
     use_backend tenant_b_postgres if is_tenant_b
-
-    default_backend tenant_a_postgres # Optional: a default backend for non-SNI traffic
     
 frontend stats
     bind *:8404

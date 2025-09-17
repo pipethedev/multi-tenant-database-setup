@@ -1,47 +1,50 @@
-version: '3.8'
+version: "3.9"
 
 services:
   traefik:
-    image: traefik:v2.10
+    image: traefik:v2.11
+    container_name: traefik
     ports:
       - "5432:5432"
+      - "80:80"
+      - "8080:8080"
     volumes:
-      - ./traefik.yml:/etc/traefik/traefik.yml
-      - ./dynamic.yml:/etc/traefik/dynamic.yml
-      - ./certs:/certs
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml
+      - ./traefik/dynamic:/etc/traefik/dynamic
+      - ./data/acme.json:/etc/traefik/acme.json
     networks:
-      - paas-network
+      - paas-net
 
   postgres-a:
     image: postgres:15
+    container_name: postgres-a
     environment:
       POSTGRES_USER: user_a
       POSTGRES_PASSWORD: password_a
       POSTGRES_DB: db_a
+    ports:
+      - "4500:5432"
+    volumes:
+      - ./data/postgres-a:/var/lib/postgresql/data
+    command: -p 4500
     networks:
-      - paas-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.tcp.routers.postgres-a.rule=HostSNI(`x.brimble.app`)"
-      - "traefik.tcp.routers.postgres-a.entrypoints=postgres"
-      - "traefik.tcp.routers.postgres-a.service=postgres-a-svc"
-      - "traefik.tcp.services.postgres-a-svc.loadbalancer.server.port=5432"
+      - paas-net
 
   postgres-b:
     image: postgres:15
+    container_name: postgres-b
     environment:
       POSTGRES_USER: user_b
       POSTGRES_PASSWORD: password_b
       POSTGRES_DB: db_b
+    ports:
+      - "5500:5432"
+    volumes:
+      - ./data/postgres-b:/var/lib/postgresql/data
+    command: -p 5500
     networks:
-      - paas-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.tcp.routers.postgres-b.rule=HostSNI(`y.brimble.app`)"
-      - "traefik.tcp.routers.postgres-b.entrypoints=postgres"
-      - "traefik.tcp.routers.postgres-b.service=postgres-b-svc"
-      - "traefik.tcp.services.postgres-b-svc.loadbalancer.server.port=5432"
+      - paas-net
 
 networks:
-  paas-network:
+  paas-net:
     driver: bridge

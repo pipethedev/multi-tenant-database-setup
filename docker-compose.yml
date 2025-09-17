@@ -1,0 +1,228 @@
+version: '3.8'
+
+services:
+  haproxy-postgres:
+    image: haproxy:2.8-alpine
+    container_name: haproxy-postgres
+    ports:
+      - "5432:5432"
+      - "8404:8404"
+    volumes:
+      - ./config/haproxy-postgres.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./ssl:/etc/ssl/certs:ro
+    depends_on:
+      - postgres-tenant-a
+      - postgres-tenant-b
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  haproxy-mysql:
+    image: haproxy:2.8-alpine
+    container_name: haproxy-mysql
+    ports:
+      - "3306:3306"
+      - "8405:8404"
+    volumes:
+      - ./config/haproxy-mysql.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./ssl:/etc/ssl/certs:ro
+    depends_on:
+      - mysql-tenant-a
+      - mysql-tenant-b
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  haproxy-redis:
+    image: haproxy:2.8-alpine
+    container_name: haproxy-redis
+    ports:
+      - "6379:6379"
+      - "8407:8404"
+    volumes:
+      - ./config/haproxy-redis.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./ssl:/etc/ssl/certs:ro
+    depends_on:
+      - redis-tenant-a
+      - redis-tenant-e
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  # =============================================================================
+  # POSTGRESQL DATABASES
+  # =============================================================================
+  
+  postgres-tenant-a:
+    image: postgres:15-alpine
+    container_name: postgres-tenant-a
+    environment:
+      POSTGRES_DB: tenant_a_db
+      POSTGRES_USER: tenant_a_user
+      POSTGRES_PASSWORD: secure_password_a
+    volumes:
+      - postgres_a_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenant_a_user -d tenant_a_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  postgres-tenant-b:
+    image: postgres:15-alpine
+    container_name: postgres-tenant-b
+    environment:
+      POSTGRES_DB: tenant_b_db
+      POSTGRES_USER: tenant_b_user
+      POSTGRES_PASSWORD: secure_password_b
+    volumes:
+      - postgres_b_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenant_b_user -d tenant_b_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  # =============================================================================
+  # MYSQL DATABASES
+  # =============================================================================
+  
+  mysql-tenant-a:
+    image: mysql:8.0
+    container_name: mysql-tenant-a
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_a
+      MYSQL_DATABASE: tenant_a_db
+      MYSQL_USER: tenant_a_user
+      MYSQL_PASSWORD: secure_password_a
+    volumes:
+      - mysql_a_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  mysql-tenant-b:
+    image: mysql:8.0
+    container_name: mysql-tenant-b
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_b
+      MYSQL_DATABASE: tenant_b_db
+      MYSQL_USER: tenant_b_user
+      MYSQL_PASSWORD: secure_password_b
+    volumes:
+      - mysql_b_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  # =============================================================================
+  # REDIS DATABASES
+  # =============================================================================
+  
+  redis-tenant-a:
+    image: redis:7-alpine
+    container_name: redis-tenant-a
+    command: redis-server --requirepass secure_password_a --appendonly yes
+    volumes:
+      - redis_a_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "secure_password_a", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  redis-tenant-e:
+    image: redis:7-alpine
+    container_name: redis-tenant-e
+    command: redis-server --requirepass secure_password_e --appendonly yes
+    volumes:
+      - redis_e_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "secure_password_e", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  # =============================================================================
+  # MONITORING
+  # =============================================================================
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: brimble-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: brimble-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+  # Dashboard
+  dashboard:
+    image: nginx:alpine
+    container_name: brimble-dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    networks:
+      - brimble-net
+
+volumes:
+  postgres_a_data:
+  postgres_b_data:
+  mysql_a_data:
+  mysql_b_data:
+  redis_a_data:
+  redis_e_data:
+  grafana_data:
+
+networks:
+  brimble-net:
+    driver: bridge

@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'haproxy-postgres'
+    static_configs:
+      - targets: ['haproxy-postgres:8404']
+    scrape_interval: 5s
+    metrics_path: '/stats'
+    params:
+      stats: ['']
+      
+  - job_name: 'haproxy-mysql'
+    static_configs:
+      - targets: ['haproxy-mysql:8404']
+    scrape_interval: 5s
+    metrics_path: '/stats'
+    params:
+      stats: ['']
+      
+  - job_name: 'haproxy-redis'
+    static_configs:
+      - targets: ['haproxy-redis:8404']
+    scrape_interval: 5s
+    metrics_path: '/stats'
+    params:
+      stats: ['']

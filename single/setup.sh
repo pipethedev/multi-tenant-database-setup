@@ -64,16 +64,20 @@ backend tenant_b_postgres
     mode tcp
     server postgres-b postgres-tenant-b:5432 check
 
-frontend tenant_a_frontend
+frontend postgres_sni_frontend
     bind *:5432
     mode tcp
-    default_backend tenant_a_postgres
+    tcp-request inspect-delay 5s
+    tcp-request content accept if { req_ssl_hello_type 1 }
 
-frontend tenant_b_frontend
-    bind *:5433
-    mode tcp
-    default_backend tenant_b_postgres
+    acl is_tenant_a req.ssl_sni -i tenant-a.postgres.brimble.app
+    acl is_tenant_b req.ssl_sni -i tenant-b.postgres.brimble.app
 
+    use_backend tenant_a_postgres if is_tenant_a
+    use_backend tenant_b_postgres if is_tenant_b
+
+    default_backend tenant_a_postgres # Optional: a default backend for non-SNI traffic
+    
 frontend stats
     bind *:8404
     mode http

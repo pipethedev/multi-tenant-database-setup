@@ -1,6 +1,10 @@
 version: '3.8'
 
 services:
+  # =============================================================================
+  # HAPROXY PROXIES
+  # =============================================================================
+  
   haproxy-postgres:
     image: haproxy:2.8-alpine
     container_name: haproxy-postgres
@@ -207,7 +211,7 @@ services:
     image: nginx:alpine
     container_name: brimble-dashboard
     ports:
-      - "8080:80"
+      - "8888:80"
     volumes:
       - ./dashboard:/usr/share/nginx/html:ro
     restart: unless-stopped

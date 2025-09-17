@@ -346,7 +346,7 @@ else
 fi
 
 echo ""
-echo "📊 Dashboard: http://localhost:8080"
+echo "📊 Dashboard: http://localhost:8888"
 echo "📈 Prometheus: http://localhost:9090"
 echo "📊 HAProxy Stats:"
 echo "  - PostgreSQL: http://localhost:8404/stats"
@@ -363,4 +363,4 @@ echo "Next steps:"
 echo "1. Run: docker-compose up -d"
 echo "2. Wait 30 seconds for services to start"
 echo "3. Test: ./test-connections.sh"
-echo "4. Visit: http://localhost:8080"
+echo "4. Visit: http://localhost:8888"

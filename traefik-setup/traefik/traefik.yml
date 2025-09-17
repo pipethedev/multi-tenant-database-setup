@@ -22,7 +22,3 @@ certificatesResolvers:
       storage: /etc/traefik/acme.json
       httpChallenge:
         entryPoint: web
-
-entryPoints:
-  web:
-    address: ":80"

@@ -126,6 +126,7 @@ frontend stats
     mode http
     stats enable
     stats uri /stats
+    stats refresh 10s
     stats show-desc "MySQL Proxy"
 EOF
 
@@ -164,6 +165,7 @@ frontend stats
     mode http
     stats enable
     stats uri /stats
+    stats refresh 10s
     stats show-desc "Redis Proxy"
 EOF
 
@@ -247,7 +249,6 @@ cat > dashboard/index.html <<'EOF'
     <script>
         function runTest() {
             document.getElementById('test-results').innerHTML = '<div class="status testing">Running tests...</div>';
-            // In a real implementation, this would make API calls to test connections
             setTimeout(() => {
                 document.getElementById('test-results').innerHTML = `
                     <div class="status online">PostgreSQL: Connected</div><br>
@@ -268,7 +269,6 @@ cat > test-connections.sh <<'EOF'
 echo "🧪 Testing database connections..."
 echo ""
 
-# Add local DNS entries for testing
 echo "📝 Adding local DNS entries to /etc/hosts..."
 sudo sh -c 'cat >> /etc/hosts << EOL
 # Brimble Test Entries
@@ -286,7 +286,6 @@ sleep 15
 echo ""
 echo "Testing connections..."
 
-# Test PostgreSQL
 echo "🐘 PostgreSQL:"
 if command -v psql &> /dev/null; then
     PGPASSWORD="secure_password_a" timeout 10s psql -h tenant-a.postgres.brimble.app -p 5432 -U tenant_a_user -d tenant_a_db -c "SELECT 'Tenant A Connected!' as status;" 2>/dev/null
@@ -315,6 +314,13 @@ if command -v mysql &> /dev/null; then
     else
         echo "❌ Tenant A: Failed"
     fi
+    
+    timeout 10s mysql -h tenant-b.mysql.brimble.app -P 3306 -u tenant_b_user -psecure_password_b -e "SELECT 'Tenant B Connected!' as status;" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "✅ Tenant B: Connected"
+    else
+        echo "❌ Tenant B: Failed"
+    fi
 else
     echo "⚠️  mysql not found. Install: apt-get install mysql-client"
 fi
@@ -328,6 +334,13 @@ if command -v redis-cli &> /dev/null; then
     else
         echo "❌ Tenant A: Failed"
     fi
+    
+    timeout 10s redis-cli -h tenant-e.redis.brimble.app -p 6379 -a secure_password_e ping 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "✅ Tenant E: Connected"
+    else
+        echo "❌ Tenant E: Failed"
+    fi
 else
     echo "⚠️  redis-cli not found. Install: apt-get install redis-tools"
 fi
@@ -339,10 +352,6 @@ echo "📊 HAProxy Stats:"
 echo "  - PostgreSQL: http://localhost:8404/stats"
 echo "  - MySQL: http://localhost:8405/stats"
 echo "  - Redis: http://localhost:8407/stats"
-EOF
-
-chmod +x test-connections.sh
-
 EOF
 
 chmod +x test-connections.sh

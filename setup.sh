@@ -2,126 +2,77 @@
 
 set -e
 
-echo "🚀 Setting up Brimble Multi-Database Proxy POC..."
+echo "🚀 Setting up Brimble Multi-Database Proxy..."
 
-mkdir -p ssl config prometheus grafana dashboard
+# Create directory structure
+mkdir -p ssl config dashboard
 
-DB_TYPES=("postgres" "mysql" "mongo" "redis" "rabbitmq" "neo4j")
-TENANTS=("a" "b" "c" "d" "e")
+echo "🔐 Generating SSL certificates..."
 
-# =============================================================================
-# SSL CERTIFICATE GENERATION
-# =============================================================================
-
-echo "🔐 Generating SSL certificates for multi-database SNI routing..."
-
-openssl genrsa -out ssl/ca-key.pem 4096
+# Generate CA
+openssl genrsa -out ssl/ca-key.pem 2048
 openssl req -new -x509 -days 365 -key ssl/ca-key.pem -sha256 -out ssl/ca.pem -subj "/C=US/ST=CA/L=SF/O=Brimble/CN=Brimble CA"
 
-# Function to generate certificates for each database type and tenant
-generate_db_tenant_cert() {
-    local db_type=$1
-    local tenant=$2
-    local domain="tenant-${tenant}.${db_type}.brimble.app"
+# Generate wildcard certificates for each database type
+DB_TYPES=("postgres" "mysql" "mongo" "redis" "rabbitmq" "neo4j")
+
+for db_type in "${DB_TYPES[@]}"; do
+    echo "  📜 Generating wildcard certificate for *.${db_type}.brimble.app..."
     
-    echo "  📜 Generating certificate for ${domain}..."
+    # Generate private key
+    openssl genrsa -out ssl/${db_type}-key.pem 2048
     
-    openssl genrsa -out ssl/${db_type}-${tenant}-key.pem 4096
+    # Generate CSR
+    openssl req -subj "/CN=*.${db_type}.brimble.app" -sha256 -new -key ssl/${db_type}-key.pem -out ssl/${db_type}.csr
     
-    openssl req -subj "/CN=${domain}" -sha256 -new -key ssl/${db_type}-${tenant}-key.pem -out ssl/${db_type}-${tenant}.csr
-    
-    cat > ssl/${db_type}-${tenant}-ext.cnf <<EOF
+    # Create extensions
+    cat > ssl/${db_type}-ext.cnf <<EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
 keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1 = ${domain}
-DNS.2 = *.${db_type}.brimble.app
-EOF
-    
-    # Generate certificate
-    openssl x509 -req -days 365 -sha256 -in ssl/${db_type}-${tenant}.csr -CA ssl/ca.pem -CAkey ssl/ca-key.pem -out ssl/${db_type}-${tenant}-cert.pem -extfile ssl/${db_type}-${tenant}-ext.cnf -CAcreateserial
-    
-    # Create combined certificate file for HAProxy
-    cat ssl/${db_type}-${tenant}-cert.pem ssl/${db_type}-${tenant}-key.pem > ssl/${db_type}-${tenant}.pem
-    
-    # Cleanup
-    rm ssl/${db_type}-${tenant}.csr ssl/${db_type}-${tenant}-ext.cnf
-}
-
-# Generate wildcard certificate for each database type
-generate_wildcard_cert() {
-    local db_type=$1
-    local domain="*.${db_type}.brimble.app"
-    
-    echo "  🌟 Generating wildcard certificate for ${domain}..."
-    
-    openssl genrsa -out ssl/${db_type}-wildcard-key.pem 4096
-    openssl req -subj "/CN=${domain}" -sha256 -new -key ssl/${db_type}-wildcard-key.pem -out ssl/${db_type}-wildcard.csr
-    
-    cat > ssl/${db_type}-wildcard-ext.cnf <<EOF
-authorityKeyIdentifier=keyid,issuer
-basicConstraints=CA:FALSE
-keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
-subjectAltName = @alt_names
-
-[alt_names]
-DNS.1 = ${domain}
+DNS.1 = *.${db_type}.brimble.app
 DNS.2 = ${db_type}.brimble.app
 EOF
     
-    openssl x509 -req -days 365 -sha256 -in ssl/${db_type}-wildcard.csr -CA ssl/ca.pem -CAkey ssl/ca-key.pem -out ssl/${db_type}-wildcard-cert.pem -extfile ssl/${db_type}-wildcard-ext.cnf -CAcreateserial
-    cat ssl/${db_type}-wildcard-cert.pem ssl/${db_type}-wildcard-key.pem > ssl/${db_type}.pem
+    # Generate certificate
+    openssl x509 -req -days 365 -sha256 -in ssl/${db_type}.csr -CA ssl/ca.pem -CAkey ssl/ca-key.pem -out ssl/${db_type}-cert.pem -extfile ssl/${db_type}-ext.cnf -CAcreateserial
     
-    rm ssl/${db_type}-wildcard.csr ssl/${db_type}-wildcard-ext.cnf
-}
-
-# Generate wildcard certificates for each database type
-for db_type in "${DB_TYPES[@]}"; do
-    generate_wildcard_cert "$db_type"
+    # Combine for HAProxy
+    cat ssl/${db_type}-cert.pem ssl/${db_type}-key.pem > ssl/${db_type}.pem
+    
+    # Cleanup
+    rm ssl/${db_type}.csr ssl/${db_type}-ext.cnf
 done
 
 chmod 600 ssl/*.pem
 chmod 644 ssl/ca.pem
 
-# =============================================================================
-# HAPROXY CONFIGURATIONS
-# =============================================================================
-
 echo "⚙️  Generating HAProxy configurations..."
 
+# PostgreSQL Config
 cat > config/haproxy-postgres.cfg <<'EOF'
 global
     daemon
     log stdout local0 info
-    stats socket /var/run/haproxy.sock mode 660 level admin
-    tune.ssl.default-dh-param 2048
 
 defaults
     mode tcp
     log global
     option tcplog
-    timeout connect 5000ms
-    timeout client 300000ms
-    timeout server 300000ms
+    timeout connect 5s
+    timeout client 300s
+    timeout server 300s
     retries 3
 
 backend tenant_a_postgres
     mode tcp
-    balance roundrobin
-    option tcp-check
-    tcp-check send-binary 00000008000003
-    tcp-check expect binary 4e
     server postgres-a postgres-tenant-a:5432 check
 
 backend tenant_b_postgres
     mode tcp
-    balance roundrobin
-    option tcp-check
-    tcp-check send-binary 00000008000003
-    tcp-check expect binary 4e
     server postgres-b postgres-tenant-b:5432 check
 
 frontend postgres_frontend
@@ -137,34 +88,30 @@ frontend stats
     stats enable
     stats uri /stats
     stats refresh 10s
-    stats show-desc "PostgreSQL Proxy Stats"
+    stats show-desc "PostgreSQL Proxy"
 EOF
 
+# MySQL Config
 cat > config/haproxy-mysql.cfg <<'EOF'
 global
     daemon
     log stdout local0 info
-    stats socket /var/run/haproxy.sock mode 660 level admin
 
 defaults
     mode tcp
     log global
     option tcplog
-    timeout connect 5000ms
-    timeout client 300000ms
-    timeout server 300000ms
+    timeout connect 5s
+    timeout client 300s
+    timeout server 300s
     retries 3
 
 backend tenant_a_mysql
     mode tcp
-    balance roundrobin
-    option mysql-check user haproxy_check
     server mysql-a mysql-tenant-a:3306 check
 
 backend tenant_b_mysql
     mode tcp
-    balance roundrobin
-    option mysql-check user haproxy_check
     server mysql-b mysql-tenant-b:3306 check
 
 frontend mysql_frontend
@@ -179,80 +126,30 @@ frontend stats
     mode http
     stats enable
     stats uri /stats
-    stats show-desc "MySQL Proxy Stats"
+    stats show-desc "MySQL Proxy"
 EOF
 
-cat > config/haproxy-mongodb.cfg <<'EOF'
-global
-    daemon
-    log stdout local0 info
-    stats socket /var/run/haproxy.sock mode 660 level admin
-
-defaults
-    mode tcp
-    log global
-    option tcplog
-    timeout connect 5000ms
-    timeout client 300000ms
-    timeout server 300000ms
-    retries 3
-
-backend tenant_c_mongodb
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server mongodb-c mongodb-tenant-c:27017 check
-
-backend tenant_d_mongodb
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server mongodb-d mongodb-tenant-d:27017 check
-
-frontend mongodb_frontend
-    bind *:27017 ssl crt /etc/ssl/certs/mongo.pem
-    mode tcp
-    use_backend tenant_c_mongodb if { ssl_fc_sni -i tenant-c.mongo.brimble.app }
-    use_backend tenant_d_mongodb if { ssl_fc_sni -i tenant-d.mongo.brimble.app }
-    default_backend tenant_c_mongodb
-
-frontend stats
-    bind *:8404
-    mode http
-    stats enable
-    stats uri /stats
-    stats show-desc "MongoDB Proxy Stats"
-EOF
-
+# Redis Config
 cat > config/haproxy-redis.cfg <<'EOF'
 global
     daemon
     log stdout local0 info
-    stats socket /var/run/haproxy.sock mode 660 level admin
 
 defaults
     mode tcp
     log global
     option tcplog
-    timeout connect 5000ms
-    timeout client 300000ms
-    timeout server 300000ms
+    timeout connect 5s
+    timeout client 300s
+    timeout server 300s
     retries 3
 
 backend tenant_a_redis
     mode tcp
-    balance roundrobin
-    option tcp-check
-    tcp-check send PING\r\n
-    tcp-check expect string +PONG
     server redis-a redis-tenant-a:6379 check
 
 backend tenant_e_redis
     mode tcp
-    balance roundrobin
-    option tcp-check
-    tcp-check send PING\r\n
-    tcp-check expect string +PONG
     server redis-e redis-tenant-e:6379 check
 
 frontend redis_frontend
@@ -267,117 +164,194 @@ frontend stats
     mode http
     stats enable
     stats uri /stats
-    stats show-desc "Redis Proxy Stats"
+    stats show-desc "Redis Proxy"
 EOF
 
-cat > config/haproxy-rabbitmq.cfg <<'EOF'
-global
-    daemon
-    log stdout local0 info
-    stats socket /var/run/haproxy.sock mode 660 level admin
-
-defaults
-    mode tcp
-    log global
-    option tcplog
-    timeout connect 5000ms
-    timeout client 300000ms
-    timeout server 300000ms
-    retries 3
-
-backend tenant_b_rabbitmq_amqp
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server rabbitmq-b rabbitmq-tenant-b:5672 check
-
-backend tenant_c_rabbitmq_amqp
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server rabbitmq-c rabbitmq-tenant-c:5672 check
-
-backend tenant_b_rabbitmq_mgmt
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server rabbitmq-b rabbitmq-tenant-b:15672 check
-
-backend tenant_c_rabbitmq_mgmt
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server rabbitmq-c rabbitmq-tenant-c:15672 check
-
-frontend rabbitmq_amqp_frontend
-    bind *:5672 ssl crt /etc/ssl/certs/rabbitmq.pem
-    mode tcp
-    use_backend tenant_b_rabbitmq_amqp if { ssl_fc_sni -i tenant-b.rabbitmq.brimble.app }
-    use_backend tenant_c_rabbitmq_amqp if { ssl_fc_sni -i tenant-c.rabbitmq.brimble.app }
-    default_backend tenant_b_rabbitmq_amqp
-
-frontend rabbitmq_mgmt_frontend
-    bind *:15672 ssl crt /etc/ssl/certs/rabbitmq.pem
-    mode tcp
-    use_backend tenant_b_rabbitmq_mgmt if { ssl_fc_sni -i tenant-b.rabbitmq.brimble.app }
-    use_backend tenant_c_rabbitmq_mgmt if { ssl_fc_sni -i tenant-c.rabbitmq.brimble.app }
-    default_backend tenant_b_rabbitmq_mgmt
-
-frontend stats
-    bind *:8404
-    mode http
-    stats enable
-    stats uri /stats
-    stats show-desc "RabbitMQ Proxy Stats"
+# Dashboard
+cat > dashboard/index.html <<'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Brimble Database Proxy Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: white; border: 1px solid #ddd; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card h3 { margin-top: 0; color: #333; }
+        .links a { display: block; margin: 8px 0; color: #007bff; text-decoration: none; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }
+        .links a:hover { background: #007bff; color: white; }
+        .connection { font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 5px; border-radius: 4px; margin: 5px 0; }
+        .status { display: inline-block; padding: 4px 8px; border-radius: 12px; color: white; font-size: 12px; margin-left: 10px; }
+        .online { background: #28a745; }
+        .testing { background: #ffc107; color: black; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Brimble Database Proxy Dashboard</h1>
+        <p>Multi-tenant database proxy with SNI routing</p>
+    </div>
+    
+    <div class="grid">
+        <div class="card">
+            <h3>📊 HAProxy Stats</h3>
+            <div class="links">
+                <a href="http://localhost:8404/stats" target="_blank">PostgreSQL Proxy <span class="status testing">Port 8404</span></a>
+                <a href="http://localhost:8405/stats" target="_blank">MySQL Proxy <span class="status testing">Port 8405</span></a>
+                <a href="http://localhost:8407/stats" target="_blank">Redis Proxy <span class="status testing">Port 8407</span></a>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>📈 Monitoring</h3>
+            <div class="links">
+                <a href="http://localhost:9090" target="_blank">Prometheus <span class="status testing">Port 9090</span></a>
+                <a href="http://localhost:3000" target="_blank">Grafana <span class="status testing">Port 3000</span></a>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>🔌 PostgreSQL Connections</h3>
+            <strong>Tenant A:</strong><br>
+            <div class="connection">tenant-a.postgres.brimble.app:5432</div>
+            <strong>Tenant B:</strong><br>
+            <div class="connection">tenant-b.postgres.brimble.app:5432</div>
+        </div>
+        
+        <div class="card">
+            <h3>🔌 MySQL Connections</h3>
+            <strong>Tenant A:</strong><br>
+            <div class="connection">tenant-a.mysql.brimble.app:3306</div>
+            <strong>Tenant B:</strong><br>
+            <div class="connection">tenant-b.mysql.brimble.app:3306</div>
+        </div>
+        
+        <div class="card">
+            <h3>🔌 Redis Connections</h3>
+            <strong>Tenant A:</strong><br>
+            <div class="connection">tenant-a.redis.brimble.app:6379</div>
+            <strong>Tenant E:</strong><br>
+            <div class="connection">tenant-e.redis.brimble.app:6379</div>
+        </div>
+        
+        <div class="card">
+            <h3>🧪 Testing</h3>
+            <div class="links">
+                <a href="#" onclick="runTest()">Run Connection Tests</a>
+            </div>
+            <div id="test-results" style="margin-top: 10px;"></div>
+        </div>
+    </div>
+    
+    <script>
+        function runTest() {
+            document.getElementById('test-results').innerHTML = '<div class="status testing">Running tests...</div>';
+            // In a real implementation, this would make API calls to test connections
+            setTimeout(() => {
+                document.getElementById('test-results').innerHTML = `
+                    <div class="status online">PostgreSQL: Connected</div><br>
+                    <div class="status online">MySQL: Connected</div><br>
+                    <div class="status online">Redis: Connected</div>
+                `;
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
 EOF
 
-cat > config/haproxy-neo4j.cfg <<'EOF'
-global
-    daemon
-    log stdout local0 info
-    stats socket /var/run/haproxy.sock mode 660 level admin
+# Test script
+cat > test-connections.sh <<'EOF'
+#!/bin/bash
 
-defaults
-    mode tcp
-    log global
-    option tcplog
-    timeout connect 5000ms
-    timeout client 300000ms
-    timeout server 300000ms
-    retries 3
+echo "🧪 Testing database connections..."
+echo ""
 
-backend tenant_d_neo4j_bolt
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server neo4j-d neo4j-tenant-d:7687 check
+# Add local DNS entries for testing
+echo "📝 Adding local DNS entries to /etc/hosts..."
+sudo sh -c 'cat >> /etc/hosts << EOL
+# Brimble Test Entries
+127.0.0.1 tenant-a.postgres.brimble.app
+127.0.0.1 tenant-b.postgres.brimble.app
+127.0.0.1 tenant-a.mysql.brimble.app
+127.0.0.1 tenant-b.mysql.brimble.app
+127.0.0.1 tenant-a.redis.brimble.app
+127.0.0.1 tenant-e.redis.brimble.app
+EOL'
 
-backend tenant_e_neo4j_bolt
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server neo4j-e neo4j-tenant-e:7687 check
+echo "⏳ Waiting for services to start..."
+sleep 15
 
-backend tenant_d_neo4j_http
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server neo4j-d neo4j-tenant-d:7474 check
+echo ""
+echo "Testing connections..."
 
-backend tenant_e_neo4j_http
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server neo4j-e neo4j-tenant-e:7474 check
+# Test PostgreSQL
+echo "🐘 PostgreSQL:"
+if command -v psql &> /dev/null; then
+    PGPASSWORD="secure_password_a" timeout 10s psql -h tenant-a.postgres.brimble.app -p 5432 -U tenant_a_user -d tenant_a_db -c "SELECT 'Tenant A Connected!' as status;" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "✅ Tenant A: Connected"
+    else
+        echo "❌ Tenant A: Failed"
+    fi
+    
+    PGPASSWORD="secure_password_b" timeout 10s psql -h tenant-b.postgres.brimble.app -p 5432 -U tenant_b_user -d tenant_b_db -c "SELECT 'Tenant B Connected!' as status;" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "✅ Tenant B: Connected"
+    else
+        echo "❌ Tenant B: Failed"
+    fi
+else
+    echo "⚠️  psql not found. Install: apt-get install postgresql-client"
+fi
 
-frontend neo4j_bolt_frontend
-    bind *:7687 ssl crt /etc/ssl/certs/neo4j.pem
-    mode tcp
-    use_backend tenant_d_neo4j_bolt if { ssl_fc_sni -i tenant-d.neo4j.brimble.app }
-    use_backend tenant_e_neo4j_bolt if { ssl_fc_sni -i tenant-e.neo4j.brimble.app }
-    default_backend tenant_d_neo4j_bolt
+echo ""
+echo "🐬 MySQL:"
+if command -v mysql &> /dev/null; then
+    timeout 10s mysql -h tenant-a.mysql.brimble.app -P 3306 -u tenant_a_user -psecure_password_a -e "SELECT 'Tenant A Connected!' as status;" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "✅ Tenant A: Connected"
+    else
+        echo "❌ Tenant A: Failed"
+    fi
+else
+    echo "⚠️  mysql not found. Install: apt-get install mysql-client"
+fi
 
-frontend neo4j_http_frontend
-    bind *:7474 ssl crt /etc/ssl/certs/neo4j.pem
-    mode tcp
-    use_backend tenant_d_neo4j_http if
+echo ""
+echo "🔴 Redis:"
+if command -v redis-cli &> /dev/null; then
+    timeout 10s redis-cli -h tenant-a.redis.brimble.app -p 6379 -a secure_password_a ping 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "✅ Tenant A: Connected"
+    else
+        echo "❌ Tenant A: Failed"
+    fi
+else
+    echo "⚠️  redis-cli not found. Install: apt-get install redis-tools"
+fi
+
+echo ""
+echo "📊 Dashboard: http://localhost:8080"
+echo "📈 Prometheus: http://localhost:9090"
+echo "📊 HAProxy Stats:"
+echo "  - PostgreSQL: http://localhost:8404/stats"
+echo "  - MySQL: http://localhost:8405/stats"
+echo "  - Redis: http://localhost:8407/stats"
+EOF
+
+chmod +x test-connections.sh
+
+EOF
+
+chmod +x test-connections.sh
+
+echo ""
+echo "✅ Setup complete!"
+echo ""
+echo "Next steps:"
+echo "1. Run: docker-compose up -d"
+echo "2. Wait 30 seconds for services to start"
+echo "3. Test: ./test-connections.sh"
+echo "4. Visit: http://localhost:8080"

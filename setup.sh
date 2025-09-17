@@ -174,7 +174,7 @@ cat > dashboard/index.html <<'EOF'
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Brimble Database Proxy Dashboard</title>
+    <title>Database Proxy Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
         .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -191,13 +191,13 @@ cat > dashboard/index.html <<'EOF'
 </head>
 <body>
     <div class="header">
-        <h1>🚀 Brimble Database Proxy Dashboard</h1>
+        <h1>🚀 Database Proxy Dashboard</h1>
         <p>Multi-tenant database proxy with SNI routing</p>
     </div>
     
     <div class="grid">
         <div class="card">
-            <h3>📊 HAProxy Stats</h3>
+            <h3>HAProxy Stats</h3>
             <div class="links">
                 <a href="http://localhost:8404/stats" target="_blank">PostgreSQL Proxy <span class="status testing">Port 8404</span></a>
                 <a href="http://localhost:8405/stats" target="_blank">MySQL Proxy <span class="status testing">Port 8405</span></a>
@@ -206,7 +206,7 @@ cat > dashboard/index.html <<'EOF'
         </div>
         
         <div class="card">
-            <h3>📈 Monitoring</h3>
+            <h3>Monitoring</h3>
             <div class="links">
                 <a href="http://localhost:9090" target="_blank">Prometheus <span class="status testing">Port 9090</span></a>
                 <a href="http://localhost:3000" target="_blank">Grafana <span class="status testing">Port 3000</span></a>
@@ -214,7 +214,7 @@ cat > dashboard/index.html <<'EOF'
         </div>
         
         <div class="card">
-            <h3>🔌 PostgreSQL Connections</h3>
+            <h3>PostgreSQL Connections</h3>
             <strong>Tenant A:</strong><br>
             <div class="connection">tenant-a.postgres.brimble.app:5432</div>
             <strong>Tenant B:</strong><br>
@@ -222,7 +222,7 @@ cat > dashboard/index.html <<'EOF'
         </div>
         
         <div class="card">
-            <h3>🔌 MySQL Connections</h3>
+            <h3>MySQL Connections</h3>
             <strong>Tenant A:</strong><br>
             <div class="connection">tenant-a.mysql.brimble.app:3306</div>
             <strong>Tenant B:</strong><br>
@@ -230,7 +230,7 @@ cat > dashboard/index.html <<'EOF'
         </div>
         
         <div class="card">
-            <h3>🔌 Redis Connections</h3>
+            <h3>Redis Connections</h3>
             <strong>Tenant A:</strong><br>
             <div class="connection">tenant-a.redis.brimble.app:6380</div>
             <strong>Tenant E:</strong><br>
@@ -238,7 +238,7 @@ cat > dashboard/index.html <<'EOF'
         </div>
         
         <div class="card">
-            <h3>🧪 Testing</h3>
+            <h3>Testing</h3>
             <div class="links">
                 <a href="#" onclick="runTest()">Run Connection Tests</a>
             </div>
@@ -286,7 +286,7 @@ sleep 15
 echo ""
 echo "Testing connections..."
 
-echo "🐘 PostgreSQL:"
+echo "PostgreSQL:"
 if command -v psql &> /dev/null; then
     PGPASSWORD="secure_password_a" timeout 10s psql -h tenant-a.postgres.brimble.app -p 5432 -U tenant_a_user -d tenant_a_db -c "SELECT 'Tenant A Connected!' as status;" 2>/dev/null
     if [ $? -eq 0 ]; then

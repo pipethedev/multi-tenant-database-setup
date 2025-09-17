@@ -1,26 +1,35 @@
 global:
-  checkNewVersion: true
+  checkNewVersion: false
   sendAnonymousUsage: false
-
-entryPoints:
-  postgres:
-    address: ":5432"
-  web:
-    address: ":80"
 
 api:
   dashboard: true
   insecure: true
 
 providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
   file:
-    directory: /etc/traefik/dynamic
+    directory: /etc/traefik
     watch: true
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+  postgres:
+    address: ":5432"
 
 certificatesResolvers:
   letsencrypt:
     acme:
-      email: "hello@brimble.app"
-      storage: /etc/traefik/acme.json
-      httpChallenge:
-        entryPoint: web
+      tlsChallenge: {}
+      email: hello@brimble.app
+      storage: /certs/acme.json
+
+log:
+  level: INFO
+
+accessLog: {}

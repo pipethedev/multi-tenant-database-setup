@@ -1,50 +1,97 @@
-version: "3.9"
+version: '3.8'
 
 services:
   traefik:
-    image: traefik:v2.11
+    image: traefik:v3.0
     container_name: traefik
     ports:
-      - "5432:5432"
       - "8181:80"
+      - "8182:443"
+      - "5432:5432"
       - "8088:8080"
     volumes:
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml
-      - ./traefik/dynamic:/etc/traefik/dynamic
-      - ./data/acme.json:/etc/traefik/acme.json
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik:/etc/traefik
+      - ./certs:/certs
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/etc/traefik
+      - --providers.file.watch=true
+      - --entrypoints.postgres.address=:5432
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=hello@brimble.app
+      - --certificatesresolvers.letsencrypt.acme.storage=/certs/acme.json
     networks:
-      - paas-net
+      - postgres-network
+    restart: unless-stopped
 
   postgres-a:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: postgres-a
     environment:
-      POSTGRES_USER: user_a
-      POSTGRES_PASSWORD: password_a
-      POSTGRES_DB: db_a
-    ports:
-      - "4500:5432"
+      POSTGRES_DB: testdb_a
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
     volumes:
-      - ./data/postgres-a:/var/lib/postgresql/data
-    command: -p 4500
+      - postgres_a_data:/var/lib/postgresql/data
     networks:
-      - paas-net
+      - postgres-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.postgres-a.rule=HostSNI(`x.brimble.app`)"
+      - "traefik.tcp.routers.postgres-a.entrypoints=postgres"
+      - "traefik.tcp.routers.postgres-a.service=postgres-a"
+      - "traefik.tcp.services.postgres-a.loadbalancer.server.port=5432"
+    restart: unless-stopped
 
   postgres-b:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: postgres-b
     environment:
-      POSTGRES_USER: user_b
-      POSTGRES_PASSWORD: password_b
-      POSTGRES_DB: db_b
-    ports:
-      - "5500:5432"
+      POSTGRES_DB: testdb_b
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
     volumes:
-      - ./data/postgres-b:/var/lib/postgresql/data
-    command: -p 5500
+      - postgres_b_data:/var/lib/postgresql/data
     networks:
-      - paas-net
+      - postgres-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.postgres-b.rule=HostSNI(`y.brimble.app`)"
+      - "traefik.tcp.routers.postgres-b.entrypoints=postgres"
+      - "traefik.tcp.routers.postgres-b.service=postgres-b"
+      - "traefik.tcp.services.postgres-b.loadbalancer.server.port=5432"
+    restart: unless-stopped
+
+  postgres-c:
+    image: postgres:15-alpine
+    container_name: postgres-c
+    environment:
+      POSTGRES_DB: testdb_c
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+    volumes:
+      - postgres_c_data:/var/lib/postgresql/data
+    networks:
+      - postgres-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.postgres-c.rule=HostSNI(`z.brimble.app`)"
+      - "traefik.tcp.routers.postgres-c.entrypoints=postgres"
+      - "traefik.tcp.routers.postgres-c.service=postgres-c"
+      - "traefik.tcp.services.postgres-c.loadbalancer.server.port=5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_a_data:
+  postgres_b_data:
+  postgres_c_data:
 
 networks:
-  paas-net:
+  postgres-network:
     driver: bridge

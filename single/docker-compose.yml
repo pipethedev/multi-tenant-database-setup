@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # HAProxy with SNI routing
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: haproxy-postgres
+    ports:
+      - "5432:5432"
+      - "8404:8404"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./ssl:/etc/ssl/certs:ro
+    depends_on:
+      - postgres-tenant-a
+      - postgres-tenant-b
+    restart: unless-stopped
+    networks:
+      - db-net
+
+  # PostgreSQL Database - Tenant A
+  postgres-tenant-a:
+    image: postgres:15-alpine
+    container_name: postgres-tenant-a
+    environment:
+      POSTGRES_DB: tenant_a_db
+      POSTGRES_USER: tenant_a_user
+      POSTGRES_PASSWORD: secure_password_a
+    volumes:
+      - postgres_a_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenant_a_user -d tenant_a_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - db-net
+
+  # PostgreSQL Database - Tenant B
+  postgres-tenant-b:
+    image: postgres:15-alpine
+    container_name: postgres-tenant-b
+    environment:
+      POSTGRES_DB: tenant_b_db
+      POSTGRES_USER: tenant_b_user
+      POSTGRES_PASSWORD: secure_password_b
+    volumes:
+      - postgres_b_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenant_b_user -d tenant_b_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - db-net
+
+volumes:
+  postgres_a_data:
+  postgres_b_data:
+
+networks:
+  db-net:
+    driver: bridge

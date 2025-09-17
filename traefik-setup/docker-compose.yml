@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml
+      - ./dynamic.yml:/etc/traefik/dynamic.yml
+      - ./certs:/certs
+    networks:
+      - paas-network
+
+  postgres-a:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user_a
+      POSTGRES_PASSWORD: password_a
+      POSTGRES_DB: db_a
+    networks:
+      - paas-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.postgres-a.rule=HostSNI(`x.brimble.app`)"
+      - "traefik.tcp.routers.postgres-a.entrypoints=postgres"
+      - "traefik.tcp.routers.postgres-a.service=postgres-a-svc"
+      - "traefik.tcp.services.postgres-a-svc.loadbalancer.server.port=5432"
+
+  postgres-b:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user_b
+      POSTGRES_PASSWORD: password_b
+      POSTGRES_DB: db_b
+    networks:
+      - paas-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.postgres-b.rule=HostSNI(`y.brimble.app`)"
+      - "traefik.tcp.routers.postgres-b.entrypoints=postgres"
+      - "traefik.tcp.routers.postgres-b.service=postgres-b-svc"
+      - "traefik.tcp.services.postgres-b-svc.loadbalancer.server.port=5432"
+
+networks:
+  paas-network:
+    driver: bridge

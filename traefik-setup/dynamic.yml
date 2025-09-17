@@ -1,0 +1,26 @@
+tcp:
+  routers:
+    postgres-a:
+      rule: "HostSNI(`x.brimble.app`)"
+      service: postgres-a-svc
+      entryPoints:
+        - postgres
+      tls:
+        passthrough: true
+    postgres-b:
+      rule: "HostSNI(`y.brimble.app`)"
+      service: postgres-b-svc
+      entryPoints:
+        - postgres
+      tls:
+        passthrough: true
+
+  services:
+    postgres-a-svc:
+      loadBalancer:
+        servers:
+          - address: "postgres-a:5432"
+    postgres-b-svc:
+      loadBalancer:
+        servers:
+          - address: "postgres-b:5432"

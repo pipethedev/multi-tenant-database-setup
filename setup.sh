@@ -232,9 +232,9 @@ cat > dashboard/index.html <<'EOF'
         <div class="card">
             <h3>🔌 Redis Connections</h3>
             <strong>Tenant A:</strong><br>
-            <div class="connection">tenant-a.redis.brimble.app:6379</div>
+            <div class="connection">tenant-a.redis.brimble.app:6380</div>
             <strong>Tenant E:</strong><br>
-            <div class="connection">tenant-e.redis.brimble.app:6379</div>
+            <div class="connection">tenant-e.redis.brimble.app:6380</div>
         </div>
         
         <div class="card">
@@ -328,14 +328,14 @@ fi
 echo ""
 echo "🔴 Redis:"
 if command -v redis-cli &> /dev/null; then
-    timeout 10s redis-cli -h tenant-a.redis.brimble.app -p 6379 -a secure_password_a ping 2>/dev/null
+    timeout 10s redis-cli -h tenant-a.redis.brimble.app -p 6380 -a secure_password_a ping 2>/dev/null
     if [ $? -eq 0 ]; then
         echo "✅ Tenant A: Connected"
     else
         echo "❌ Tenant A: Failed"
     fi
     
-    timeout 10s redis-cli -h tenant-e.redis.brimble.app -p 6379 -a secure_password_e ping 2>/dev/null
+    timeout 10s redis-cli -h tenant-e.redis.brimble.app -p 6380 -a secure_password_e ping 2>/dev/null
     if [ $? -eq 0 ]; then
         echo "✅ Tenant E: Connected"
     else

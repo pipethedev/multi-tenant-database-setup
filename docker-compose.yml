@@ -1,10 +1,6 @@
 version: '3.8'
 
 services:
-  # =============================================================================
-  # HAPROXY PROXIES
-  # =============================================================================
-  
   haproxy-postgres:
     image: haproxy:2.8-alpine
     container_name: haproxy-postgres
@@ -41,7 +37,7 @@ services:
     image: haproxy:2.8-alpine
     container_name: haproxy-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
       - "8407:8404"
     volumes:
       - ./config/haproxy-redis.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
@@ -137,10 +133,7 @@ services:
     networks:
       - brimble-net
 
-  # =============================================================================
-  # REDIS DATABASES
-  # =============================================================================
-  
+
   redis-tenant-a:
     image: redis:7-alpine
     container_name: redis-tenant-a

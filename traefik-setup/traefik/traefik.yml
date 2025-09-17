@@ -5,6 +5,8 @@ global:
 entryPoints:
   postgres:
     address: ":5432"
+  web:
+    address: ":80"
 
 api:
   dashboard: true
@@ -18,7 +20,7 @@ providers:
 certificatesResolvers:
   letsencrypt:
     acme:
-      email: "your-email@example.com"
+      email: "hello@brimble.app"
       storage: /etc/traefik/acme.json
       httpChallenge:
         entryPoint: web
